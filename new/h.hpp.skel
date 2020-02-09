@@ -1,0 +1,4 @@
+// {{filename}}
+#pragma once
+
+{{payload}}

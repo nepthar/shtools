@@ -1,0 +1,19 @@
+# {{name}}
+# This is a shell workspace file that contains some commonly repeated
+# shell commands related to this project. It's designed to be used with
+# workspace.sh, but may also be sourced and used in any shell script or terminal.
+
+# Environment
+export ws_name="{{name}}" # Required
+export ws_home="{{home}}" # Required
+
+# Optional command executed whenever the workspace is sucessfully
+# entered through workspace.sh
+# cmd.enter()
+# {
+#   init ...
+# }
+
+# Forwarded Commands:
+# cmd.[your-command] () { ... }
+# Inovke with the special comma operator: $ , [your-command]
