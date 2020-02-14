@@ -53,7 +53,7 @@ __prompt_command()
   done
 
   if ((${#ps1_rendered_parts[@]} > 0)); then
-    string.join "$ps1_sep" "${ps1_rendered_parts[@]}"
+    string.join -vR "$ps1_sep" "${ps1_rendered_parts[@]}"
     ps1_body=" ${ps1_body_start}${R}${ps1_body_end}"
   else
     ps1_body="$ps1_body_end"
