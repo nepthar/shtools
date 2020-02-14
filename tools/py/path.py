@@ -1,21 +1,16 @@
-import os
-import os.path
+import os.path as op
 import sys
 
 
+def abspath(item):
+  return op.abspath(op.expanduser(item))
 
 
-def paths(item):
-  realpath = os.path.realpath(item)
-  paths = []
-  while os.path.islink(item):
-    paths.append(item)
-    item = os.readlink(item)
-  paths.append(realpath)
-  return paths
+def resolve(item):
+  return op.realpath(op.expanduser(item))
 
 
-if sys.argv[1] == '-c':
-  print('\n'.join(' -> '.join(paths(x)) for x in sys.argv[2:]))
+if sys.argv[1] == '-l':
+  print('\n'.join(resolve(x) for x in sys.argv[2:]))
 else:
-  print('\n'.join(os.path.realpath(x) for x in sys.argv[1:]))
+  print('\n'.join(abspath(x) for x in sys.argv[1:]))

@@ -2,10 +2,12 @@
 # --
 # Use Python in shell commands, with a few tricks to speed things up. This adds
 # ~25 ms of overhead vs ~50 ms of overhead for a standard python script
-# invocation.
+# invocation. I did this instead of modules beacuse they're just a headache.
 
 export py_interpreter="/usr/local/bin/python3"
 export py_path="${shtools_root}/tools/py"
+
+# todo: disable gc
 
 ## py (cmd) [args...]
 ## Runs `py_path/cmd.py` with args in python3 with some helpful options set:
@@ -18,9 +20,19 @@ py() {
   local cmdfile="${py_path}/${1}.py"
   if [[ -f "$cmdfile" ]]; then
     shift 1
-    "$py_interpreter" -ISB "$cmdfile" "$@"
+    "$py_interpreter" -I "$cmdfile" "$@"
     return $?
+  else
+    emsg "Command not found in $py_path"
+    return 1
   fi
-  emsg "No such py command file: $cmdfile"
-  return 1
+}
+
+## py.cmd (cmd)
+##
+py.cmd()
+{
+  local cmd
+  string.join -vcmd ";" "$@"
+  "$py_interpreter" -IS -c "$cmd"
 }
