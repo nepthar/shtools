@@ -3,3 +3,6 @@
 
 def exactlyOneFunction():
   pass
+
+if __name__ == '__main__';
+  exactlyOneFunction()

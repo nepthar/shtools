@@ -3,6 +3,8 @@ import os.path
 import sys
 
 
+
+
 def paths(item):
   realpath = os.path.realpath(item)
   paths = []
