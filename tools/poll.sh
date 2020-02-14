@@ -1,3 +1,4 @@
+# Untested Feb 2020
 # poll.sh
 # Run a command every x seconds and perform actions based on the outcome
 

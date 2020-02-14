@@ -9,11 +9,10 @@
 gui.prompt() {
   local prompt="$1"
   local default="$2"
+  local giveup
 
   if [[ ! -z "$3" ]]; then
     local giveup="giving up after $3"
-  else
-    local giveup=""
   fi
 
   osascript <<EOF
