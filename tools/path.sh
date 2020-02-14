@@ -1,6 +1,8 @@
 # Path
 # ----
-# Path-related tools. Relies on a python helper
+# Path-related tools. Relies on python3. We coul pipe stuff to python3,
+# but this way we don't set up more subprocesses than necessary.
+
 
 ## path.which (target)
 ## Attempts to resolve target in the style of `which`, but also resolves functions
@@ -30,12 +32,14 @@ path.abs()
   py path "$@"
 }
 
-## path.resolve [args...]
+
+## path.resolve [arg]
 ## Resolves the absolute path of all `args`, following links
 path.resolve()
 {
-  py path -c "$@"
+  py path "$@"
 }
+
 
 ## path (target)
 ## Dump the current $PATH in search order. If `target` is specified, it will
