@@ -4,8 +4,8 @@
 # workspace.sh, but may also be sourced and used in any shell script or terminal.
 
 # Environment
-export ws_name="{{name}}" # Required
-export ws_home="{{home}}" # Required
+export ws_name="{{name}}"
+export ws_home="{{home}}"
 
 # Optional command executed whenever the workspace is sucessfully
 # entered through workspace.sh

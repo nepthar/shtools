@@ -19,16 +19,26 @@
 # Configuration
 export ws_root="${shtools_root}/workspaces"
 export ws_template="${ws_root}/workspace.sh.skel"
+export ws_inactive="<!NO_WORKSPACE!>"
 
-# Current workspace information
-export ws_name
-export ws_funcs
-export ws_file
+_ws.clear() {
+  # Current workspace information
+  export ws_name="$ws_inactive"
+  export ws_home="$ws_inactive"
+  export ws_funcs=()
+  export ws_file=$ws_inactive
+}
 
+_ws.clear
+
+_ws.isActive()
+{
+  [[ "$ws_name" != "$ws_inactive" ]]
+}
 
 _ws.ps1()
 {
-  if [[ ! -z "$ws_name" ]]; then
+  if _ws.isActive; then
     ps1.add-part proj magenta "${ws_name}"
   fi
 }
@@ -36,8 +46,12 @@ _ws.ps1()
 _ws.tab_comp_inactive()
 {
   local cur
+  local words
+
   cur=${COMP_WORDS[COMP_CWORD]}
 
+  # Subshell in a tab comp isn't ideal. We strive for speed. Perhaps
+  # fix this later.
   words=$(
   for file in ${ws_root}/*.ws; do
     f1="${file%.*}"
@@ -52,6 +66,84 @@ _ws.tab_comp_active()
   local cur
   cur=${COMP_WORDS[COMP_CWORD]}
   COMPREPLY=($(compgen -W "$ws_funcs" -- $cur))
+}
+
+_ws.source_and_validate()
+{
+  # Assumptions:
+  #   - ws_file has been determined to be readable
+  #   - ws_file is already an absolute path
+
+  local old_ws_home="$ws_home"
+  local old_ws_name="$ws_name"
+
+  if ! source "$ws_file"; then
+    dmsg "Failed sourcing"
+    return 1
+  fi
+
+  dmsg "Resolving vars for ws_file=$ws_file"
+
+  if [[ "$ws_home" == "$ws_inactive" ]]; then
+    dmsg "ws_home was not set in workspace.sh." \
+      "Using the path of the enclosing folder"
+
+    local possible_home="${ws_file%workspace.sh}"
+
+    if [[ -z $possible_home ]]; then
+      ws_home="$PWD"
+    elif cd "$possible_home" 2> /dev/null; then
+      ws_home="$PWD"
+      cd - 2> /dev/null
+    fi
+  fi
+
+  if [[ "$ws_name" == "$ws_inactive" ]]; then
+    dmsg "ws_name was not set in workspace.sh." \
+      "Using the name of the enclosing folder"
+
+    ws_name="${ws_home##*/}"
+  fi
+
+  test -d "$ws_home"
+}
+
+# Resolve a token to an absolute file path of a file that exists
+_ws.resolve_file()
+{
+  local c
+  local candidates=()
+
+  if [[ -z $1 ]]; then
+    candidates=("${PWD}/workspace.sh")
+  else
+    candidates=(
+      "$(path.resolve "${ws_root}/${1}.ws")"
+      "$(path.abs "${1}/workspace.sh")"
+      "$(path.abs "$1")"
+    )
+  fi
+
+  dmsg "token=$1, candiates=(${candidates[@]})"
+  for c in "${candidates[@]}"; do
+    if [[ -f "$c" ]]; then
+      echo "$c"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+ws.debug()
+{
+  echo "ws_name   $ws_name"
+  echo "ws_home   $ws_home"
+  echo "ws_funcs  (${ws_funcs[@]})"
+  echo "ws_file   $ws_file"
+
+  echo -n "ws_home: "; [[ -d "$ws_home" ]] && echo "ok" || echo "not found"
+  echo -n "ws_file: "; [[ -f "$ws_file" ]] && echo "ok" || echo "not found"
 }
 
 ## ws.ls
@@ -93,46 +185,40 @@ ws.new()
   echo "$new_name created in $new_file."
 }
 
-## ws.enter (name)
-## Enter into a workspace. If (name) is provided, it will be looked up
+## ws.enter (name/filename)
+## Enter into a workspace. If (name/filename) is provided, it will be looked up
 ## in linked workspaces. If not, the workspace in the current dir will
 ## be used.
 ws.enter()
 {
-  local wsf
-  local rc=0
+  local possible_file
 
-  if [[ ! -z $ws_name ]]; then
+  if _ws.isActive; then
     emsg "Already in a workspace: $ws_name"
     return 1
   fi
 
-  if (( $# == 0 )); then
-    wsf="${PWD}/workspace.sh"
-  else
-    wsf="${ws_root}/${1}.ws"
-  fi
-
-  if [[ ! -r "$wsf" ]]; then
-    emsg "Couln't find workspace $1 @ $wsf"
+  # This will either resolve to the full path of a readable file or fail.
+  if ! possible_file="$(_ws.resolve_file "$1")"; then
+    emsg "Unable to resolve workspace from $1"
     return 1
   fi
 
-  if ! source "$wsf"; then emsg "Can't source $wsf"; rc=1; fi
-  if [[ -z $ws_name ]]; then emsg "ws_name not set"; rc=1; fi
-  if [[ ! -d $ws_home ]]; then emsg "Bad ws_home=${ws_home}"; rc=1; fi
+  ws_file="$possible_file"
+
+  if ! _ws.source_and_validate; then
+    emsg "Failed to enter workspace. Info:"
+    ws.debug >&2
+    _ws.clear
+    emsg "Shell is probably in a bad state and should be closed"
+    return 1
+  fi
 
   cd "$ws_home"
 
   # Only run the entry hook if it was defined
   if isfunc cmd.enter && ! cmd.enter; then
-    emsg "cmd.enter failed"
-    rc=1
-  fi
-
-  if (( rc != 0 )); then
-    emsg "Shell is probably in a bad state and should be closed"
-    return 1
+    echo "Warning: Entry command failed" >&2
   fi
 
   # Sourcing the file & running init seems to have gone OK.
@@ -143,7 +229,6 @@ ws.enter()
     done))
 
   # Project entry mapping
-  export ws_file="$wsf"
   alias ,=_ws.active
   complete -F _ws.tab_comp_active ,
 
@@ -164,21 +249,14 @@ ws.enter()
 ## Add a link to the active workspace in $ws_root
 ws.add()
 {
-  if [[ ! -f ./workspace.sh ]]; then
-    emsg "No workspace.sh to link here"
+  if ! _ws.isActive; then
+    emsg "Must be in an active workspace to add"
     return 1
   fi
 
-  local new_name="$(source ./workspace.sh && echo $ws_name)"
-  if [[ -z $new_name ]]; then
-    emsg "Problem with workspace.sh"
-    return 1
-  fi
-
-  local linkname="${ws_root}/${new_name}.ws"
-
-  if ask "Link workspace $new_name as ${linkname}?"; then
-    ln -s "${PWD}/workspace.sh" "${linkname}"
+  local linkname="${ws_root}/${ws_name}.ws"
+  if ask "Link workspace $ws_name as ${linkname}?"; then
+    ln -s "${ws_file}" "${linkname}"
   fi
 }
 
@@ -187,17 +265,22 @@ ws.add()
 ## The parent shell recieves the return code, but isn't effected.
 ws.exec()
 {
-  if [[ -z "$ws_name" ]]; then
+  if ! _ws.isActive; then
     local wd="$1"
     shift 1
-    (
-      cd "$wd"
-      ws.enter && _ws.active "$@"
-    )
+    (cd "$wd" && ws.enter && eval "$@" )
   else
-    emsg "ws.exec cannot be used from within an active workspace"
+    emsg "cannot be used from within an active workspace"
     return 1
   fi
+}
+
+## Diagnostic
+ws.resolve()
+{
+
+:;
+
 }
 
 _ws.active()
