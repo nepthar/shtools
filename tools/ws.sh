@@ -20,16 +20,11 @@
 export ws_root="${shtools_root}/workspaces"
 export ws_template="${ws_root}/workspace.sh.skel"
 export ws_inactive="<!NO_WORKSPACE!>"
+export ws_name="$ws_inactive"
+export ws_home="$ws_inactive"
+export ws_funcs=()
+export ws_file=$ws_inactive
 
-_ws.clear() {
-  # Current workspace information
-  export ws_name="$ws_inactive"
-  export ws_home="$ws_inactive"
-  export ws_funcs=()
-  export ws_file=$ws_inactive
-}
-
-_ws.clear
 
 _ws.isActive()
 {
@@ -65,47 +60,11 @@ _ws.tab_comp_active()
 {
   local cur
   cur=${COMP_WORDS[COMP_CWORD]}
-  COMPREPLY=($(compgen -W "$ws_funcs" -- $cur))
-}
 
-_ws.source_and_validate()
-{
-  # Assumptions:
-  #   - ws_file has been determined to be readable
-  #   - ws_file is already an absolute path
-
-  local old_ws_home="$ws_home"
-  local old_ws_name="$ws_name"
-
-  if ! source "$ws_file"; then
-    dmsg "Failed sourcing"
-    return 1
-  fi
-
-  dmsg "Resolving vars for ws_file=$ws_file"
-
-  if [[ "$ws_home" == "$ws_inactive" ]]; then
-    dmsg "ws_home was not set in workspace.sh." \
-      "Using the path of the enclosing folder"
-
-    local possible_home="${ws_file%workspace.sh}"
-
-    if [[ -z $possible_home ]]; then
-      ws_home="$PWD"
-    elif cd "$possible_home" 2> /dev/null; then
-      ws_home="$PWD"
-      cd - 2> /dev/null
-    fi
-  fi
-
-  if [[ "$ws_name" == "$ws_inactive" ]]; then
-    dmsg "ws_name was not set in workspace.sh." \
-      "Using the name of the enclosing folder"
-
-    ws_name="${ws_home##*/}"
-  fi
-
-  test -d "$ws_home"
+  COMPREPLY=()
+  for cg in $(compgen -c -- "${ws_name}.${cur}"); do
+    COMPREPLY+=("${cg#*.}")
+  done
 }
 
 # Resolve a token to an absolute file path of a file that exists
@@ -137,13 +96,16 @@ _ws.resolve_file()
 
 ws.debug()
 {
-  echo "ws_name   $ws_name"
-  echo "ws_home   $ws_home"
-  echo "ws_funcs  (${ws_funcs[@]})"
-  echo "ws_file   $ws_file"
+  local hPart
+  local fPart
 
-  echo -n "ws_home: "; [[ -d "$ws_home" ]] && echo "ok" || echo "not found"
-  echo -n "ws_file: "; [[ -f "$ws_file" ]] && echo "ok" || echo "not found"
+  if [[ -f "$ws_file" ]]; then fPart="found"; else fPart="not found"; fi
+  if [[ -d "$ws_home" ]]; then hPart="found"; else hPart="not found"; fi
+
+  echo "ws_name   $ws_name"
+  echo "ws_home   $ws_home ($hPart)"
+  echo "ws_file   $ws_file ($fPart)"
+  echo "ws_funcs  (${ws_funcs[@]})"
 }
 
 ## ws.ls
@@ -153,13 +115,16 @@ ws.ls()
   ls -alh "${ws_root}"/*.ws
 }
 
-## ws.new [name]
-## Create a new workspace in the current folder with a given [name]
+## ws.new (name)
+## Create a new workspace in the current folder with a given name. If
+## name is not provided, the name of the folder will be used.
 ws.new()
 {
-  if [[ -z $1 ]]; then
-    emsg "Need a name for this new project"
-    return 1
+  local new_name="$1"
+  local new_home="$PWD"
+
+  if [[ -z $new_name ]]; then
+    new_name="${new_home##*/}"
   fi
 
   if [[ -f workspace.sh ]]; then
@@ -171,9 +136,6 @@ ws.new()
     emsg "Can't find template file: $ws_template"
     return 1
   fi
-
-  local new_name="$1"
-  local new_home="$PWD"
 
   if ! ask "Create \"$new_name\" @ ${new_home}?"; then
     echo "canceled."
@@ -205,27 +167,27 @@ ws.enter()
   fi
 
   ws_file="$possible_file"
+  ws_home="${ws_file%/*}"
 
-  if ! _ws.source_and_validate; then
-    emsg "Failed to enter workspace. Info:"
+  if ! {
+    cd "$ws_home" &&
+    source "$ws_file" &&
+    test "$ws_name" != "$ws_inactive"
+  } ; then
+    emsg \
+      "Failed to enter workspace. Shell is probbably in a bad state" \
+      "and should be closed. Note that workspace files must set \$ws_name." \
+      "Additional info:"
     ws.debug >&2
-    _ws.clear
-    emsg "Shell is probably in a bad state and should be closed"
+    ws_name="<Bad workspace state, close this terminal>"
     return 1
-  fi
-
-  cd "$ws_home"
-
-  # Only run the entry hook if it was defined
-  if isfunc cmd.enter && ! cmd.enter; then
-    echo "Warning: Entry command failed" >&2
   fi
 
   # Sourcing the file & running init seems to have gone OK.
   # Generate the list of magic functions
   ws_funcs=($(
-    for funcname in $(declare -F | cut -c12- | grep ^cmd.); do
-      echo "${funcname#cmd.}"
+    for funcname in $(declare -F | cut -c12- | grep "^${ws_name}."); do
+      echo "${funcname#*.}"
     done))
 
   # Project entry mapping
@@ -275,14 +237,6 @@ ws.exec()
   fi
 }
 
-## Diagnostic
-ws.resolve()
-{
-
-:;
-
-}
-
 _ws.active()
 {
   local cmd="$1"
@@ -295,15 +249,22 @@ _ws.active()
   # We make "shortuct" commands which can be defined in the project files as
   # cmd.{command name}. This allows for making commands that don't
   # conflict with the global command namespace and can be listed via tab
-  # completion using the ',' special command. In the future, this might also
-  # add some self-documenting help stuff
+  # completion using the ',' special command.
+  #
+  # They also run in a subshell from $ws_home with eu/pipefail.
+  # if you don't want this behavior, just define regular functions in the
+  # workspace file.bash
 
-  local norm_cmd="cmd.${cmd}"
+  local norm_cmd="${ws_name}.${cmd}"
 
   shift 1
 
-  if isfunc "$norm_cmd"; then
-    "$norm_cmd" "$@"
+  if isfunc $norm_cmd; then
+    (
+      cd "$ws_home"
+      set -euo pipefail
+      $norm_cmd "$@"
+    )
   else
     echo "$cmd not found"
     return 1
