@@ -32,14 +32,12 @@ path.abs()
   py path "$@"
 }
 
-
 ## path.resolve [arg]
 ## Resolves the absolute path of all `args`, following links
 path.resolve()
 {
-  py path "$@"
+  py path -l "$@"
 }
-
 
 ## path (target)
 ## Dump the current $PATH in search order. If `target` is specified, it will
