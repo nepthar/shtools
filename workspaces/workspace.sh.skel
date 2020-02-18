@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
 
-# {{name}}
-# This file contains common commands for {{name}} project. It is
-# designed to be used with Nepthar's shell tools
-# (https://github.com/nepthar/shtools), but my simply be sourced in
-# bash instead. See the repo for more info.
+ws_name="{{name}}"
 
-export ws_name="{{name}}" # Required
+# This file is designed to work with Nepthar's shell tools, but it
+# can be used without them. See https://github.com/nepthar/shtools
 
-# Defined "command" functions as {{name}}.cmdname for easy tab
-# completion and shtools integration.
-
-# ex: {{name}}.runTests() { ... run the tests ... }
+# Common workspace commands:
+# {{name}}.run-test () { ... run the tests ... }
