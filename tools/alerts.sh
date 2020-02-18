@@ -1,3 +1,4 @@
+# Untested Feb 2020
 # Alert
 # -----
 # Monitor execution of a long-running command and send an alert when finished.
