@@ -1,15 +1,21 @@
 # ws.sh
 # -----
-# Shell workspaces. Easy peasy. Uses virtualevn as inspiration. Sort of.
+# Workspaces keep your projects organized. The comma (,) is used to access
+# workspace functionality. This is done by creating a single file,
+# workspace.sh, in the pimary folder of each project. The file contains
+# operations that are commonly performed or other environment variables.
 
-# The humble comma (,) is abused as a shortcut for various things.
+# Each workspace.sh file should be able to exist without ws.sh
 
 # Create a new workspace:
 # 1) $ cd ~/my/workspace/primary/folter
-# 2) $ , new [workspace name]
+# 2) $ , new
+
+# Link up a workspace to $shtools_root/workspaces for quick access
+# 1) $ ws.add # when in workspace
 
 # Start working in a workspace:
-# 1) $ , [workspace name]
+# 1) $ , [workspace name] or [workspace file]
 #   -  Tab completion works for selecting a workspace. Woohoo.
 #   -  The command (,) by itself will return you to the workspace's home
 
@@ -25,87 +31,16 @@ export ws_home="$ws_inactive"
 export ws_funcs=()
 export ws_file=$ws_inactive
 
-
-_ws.isActive()
+## ws.info
+## Dumps information about the workspace state
+ws.info()
 {
-  [[ "$ws_name" != "$ws_inactive" ]]
-}
-
-_ws.ps1()
-{
-  if _ws.isActive; then
-    ps1.add-part proj magenta "${ws_name}"
-  fi
-}
-
-_ws.tab_comp_inactive()
-{
-  local cur
-  local words
-
-  cur=${COMP_WORDS[COMP_CWORD]}
-
-  # Subshell in a tab comp isn't ideal. We strive for speed. Perhaps
-  # fix this later.
-  words=$(
-  for file in ${ws_root}/*.ws; do
-    f1="${file%.*}"
-    echo "${f1##*/}"
-  done)
-
-  COMPREPLY=($(compgen -W "$words" -- $cur))
-}
-
-_ws.tab_comp_active()
-{
-  local cur
-  cur=${COMP_WORDS[COMP_CWORD]}
-
-  COMPREPLY=()
-  for cg in $(compgen -c -- "${ws_name}.${cur}"); do
-    COMPREPLY+=("${cg#*.}")
-  done
-}
-
-# Resolve a token to an absolute file path of a file that exists
-_ws.resolve_file()
-{
-  local c
-  local candidates=()
-
-  if [[ -z $1 ]]; then
-    candidates=("${PWD}/workspace.sh")
-  else
-    candidates=(
-      "$(path.resolve "${ws_root}/${1}.ws")"
-      "$(path.abs "${1}/workspace.sh")"
-      "$(path.abs "$1")"
-    )
-  fi
-
-  dmsg "token=$1, candiates=(${candidates[@]})"
-  for c in "${candidates[@]}"; do
-    if [[ -f "$c" ]]; then
-      echo "$c"
-      return 0
-    fi
-  done
-
-  return 1
-}
-
-ws.debug()
-{
-  local hPart
-  local fPart
-
-  if [[ -f "$ws_file" ]]; then fPart="found"; else fPart="not found"; fi
-  if [[ -d "$ws_home" ]]; then hPart="found"; else hPart="not found"; fi
-
-  echo "ws_name   $ws_name"
-  echo "ws_home   $ws_home ($hPart)"
-  echo "ws_file   $ws_file ($fPart)"
-  echo "ws_funcs  (${ws_funcs[@]})"
+  echo "ws_root: $ws_root"
+  echo "ws_template: $ws_template"
+  echo "ws_name: $ws_name"
+  echo "ws_home: $ws_home"
+  echo "ws_funcs: (${ws_funcs[@]})"
+  echo "ws_file: $ws_file"
 }
 
 ## ws.ls
@@ -145,6 +80,13 @@ ws.new()
   py fill name="${new_name}" home="${new_home}" < "$ws_template" > workspace.sh
 
   echo "$new_name created in $new_file."
+
+  if ask "Enter $new_name?"; then
+    ws.enter workspace.sh
+    if ask "Add $new_name?"; then
+      ws.add
+    fi
+  fi
 }
 
 ## ws.enter (name/filename)
@@ -155,7 +97,7 @@ ws.enter()
 {
   local possible_file
 
-  if _ws.isActive; then
+  if _ws.is_active; then
     emsg "Already in a workspace: $ws_name"
     return 1
   fi
@@ -168,18 +110,21 @@ ws.enter()
 
   ws_file="$possible_file"
   ws_home="${ws_file%/*}"
+  ws_funcs=()
 
   if ! {
     cd "$ws_home" &&
     source "$ws_file" &&
-    test "$ws_name" != "$ws_inactive"
+    test "$ws_name" != "$ws_inactive";
   } ; then
     emsg \
       "Failed to enter workspace. Shell is probbably in a bad state" \
       "and should be closed. Note that workspace files must set \$ws_name." \
       "Additional info:"
-    ws.debug >&2
-    ws_name="<Bad workspace state, close this terminal>"
+    ws.info >&2
+    dmsg "Clearing ws_name & ws_file"
+    ws_name=$ws_inactive
+    ws_file=$ws_inactive
     return 1
   fi
 
@@ -198,7 +143,8 @@ ws.enter()
 
   ,,()
   {
-    if source "$ws_file"; then
+    ws_name="$ws_inactive"
+    if ws.enter "$ws_file"; then
       echo "Re-sourced ${ws_file}"
     else
       echo "Failed. Project may be in a broken state"
@@ -211,60 +157,31 @@ ws.enter()
 ## Add a link to the active workspace in $ws_root
 ws.add()
 {
-  if ! _ws.isActive; then
+  if ! _ws.is_active; then
     emsg "Must be in an active workspace to add"
     return 1
   fi
 
   local linkname="${ws_root}/${ws_name}.ws"
-  if ask "Link workspace $ws_name as ${linkname}?"; then
-    ln -s "${ws_file}" "${linkname}"
-  fi
-}
 
-## ws.exec [path] [cmd] (args...)
-## Execute a [cmd] from the workspace at [path] in a subshell.
-## The parent shell recieves the return code, but isn't effected.
-ws.exec()
-{
-  if ! _ws.isActive; then
-    local wd="$1"
-    shift 1
-    (cd "$wd" && ws.enter && eval "$@" )
-  else
-    emsg "cannot be used from within an active workspace"
-    return 1
-  fi
+  dmsg "$ws_file -> $linkname"
+  ln -s "$ws_file" "$linkname"
 }
 
 _ws.active()
 {
   local cmd="$1"
+  local norm_cmd="${ws_name}.${cmd}"
+
   if [[ -z $cmd ]]; then
     cd "$ws_home"
     return
   fi
 
-  # Command forwarding
-  # We make "shortuct" commands which can be defined in the project files as
-  # cmd.{command name}. This allows for making commands that don't
-  # conflict with the global command namespace and can be listed via tab
-  # completion using the ',' special command.
-  #
-  # They also run in a subshell from $ws_home with eu/pipefail.
-  # if you don't want this behavior, just define regular functions in the
-  # workspace file.bash
-
-  local norm_cmd="${ws_name}.${cmd}"
-
   shift 1
 
   if isfunc $norm_cmd; then
-    (
-      cd "$ws_home"
-      set -euo pipefail
-      $norm_cmd "$@"
-    )
+    $norm_cmd "$@"
   else
     echo "$cmd not found"
     return 1
@@ -275,16 +192,82 @@ _ws.inactive()
 {
   if [[ "$1" == "new" ]]; then
     shift 1
-    ws.new "$@" && ws.add
-  elif [[ "$1" == "link" ]]; then
+    ws.new "$@"
+  elif [[ "$1" == "add" ]]; then
     ws.add "$2"
   else
     ws.enter "$@"
   fi
 }
 
-_ws.setup()
+_ws.is_active()
 {
-  alias ,=_ws.inactive
-  complete -F _ws.tab_comp_inactive ,
+  [[ "$ws_name" != "$ws_inactive" ]]
 }
+
+_ws.ps1()
+{
+  if _ws.is_active; then
+    ps1.add-part proj magenta "${ws_name}"
+  fi
+}
+
+_ws.tab_comp_inactive()
+{
+  # When not in a workspace, generate a list of known workspaces
+  local cur
+  local words
+
+  cur=${COMP_WORDS[COMP_CWORD]}
+
+  words=$(
+  for file in ${ws_root}/*.ws; do
+    f1="${file%.*}"
+    echo "${f1##*/}"
+  done)
+
+  COMPREPLY=($(compgen -W "$words" -- $cur))
+}
+
+_ws.tab_comp_active()
+{
+  # Generate a list of forwarded functions for easy discovery
+  local cur
+  cur=${COMP_WORDS[COMP_CWORD]}
+
+  COMPREPLY=()
+  for cg in $(compgen -c -- "${ws_name}.${cur}"); do
+    COMPREPLY+=("${cg#*.}")
+  done
+}
+
+# Resolve a token to an absolute file path of a file that exists
+_ws.resolve_file()
+{
+  local c
+  local candidates=()
+
+  if [[ -z $1 ]]; then
+    candidates=("${PWD}/workspace.sh")
+  else
+    candidates=(
+      "$(path.resolve "${ws_root}/${1}.ws")"
+      "$(path.abs "${1}/workspace.sh")"
+      "$(path.abs "$1")"
+    )
+  fi
+
+  dmsg "token=$1, candiates=(${candidates[@]})"
+  for c in "${candidates[@]}"; do
+    if [[ -f "$c" ]]; then
+      echo "$c"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+alias ,=_ws.inactive
+complete -F _ws.tab_comp_inactive ,
+mkdir -p "$ws_root"

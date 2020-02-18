@@ -3,8 +3,8 @@
 # {{name}}
 # This file contains common commands for {{name}} project. It is
 # designed to be used with Nepthar's shell tools
-# (https://github.com/nepthar/shtools), but my simply be sourced instead.
-# See the repo for more info.
+# (https://github.com/nepthar/shtools), but my simply be sourced in
+# bash instead. See the repo for more info.
 
 export ws_name="{{name}}" # Required
 
