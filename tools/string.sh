@@ -1,41 +1,30 @@
 # String Functions
 # ----------------
 
-readonly NEW_LINE=$'\n'
+NEW_LINE=$'\n'
+RecordSeparator=$'\x1E'
+
+split_reply=()
 
 
-# string.split()
-# {
-#   # split (-vVAR_NAME) [split token] "things to" split
-#   local arrname
+## string.split [token] [string]
+## Splits the given string by the token. Puts the result in
+## split_reply
+string.split()
+{
+  split_reply=()
 
-#   if [[ "$1" == "-v"* ]]; then
-#     arrname="${1#-v}"
-#     shift 1
-#   fi
+  if (( $# != 2 )); then
+    emsg "string.split [token] [string]"
+    return 1
+  fi
 
-#   local split_on="$1"
-#   local split_array=()
-#   local old_ifs="$IFS"
-#   local line
+  IFS="$RecordSeparator" split_reply=($splits)
+}
 
-#   shift 1
-
-#   for arg in "$@"; do
-#     line="${arg//$split_on/$NEW_LINE}"
-#     IFS="$NEW_LINE"
-#     split_array+=($line)
-#     IFS="$old_ifs"
-#   done
-
-#   if [[ ! -z $arrname ]]; then
-#     eval "$arrname=(\"\${split_array[@]}\")"
-#   else
-#     for i in "${split_array[@]}"; do printf "%s\n" "$i"; done
-#   fi
-# }
-
-# join -vVAR_NAME [join token] (things to join)
+## string.join (-vVAR_NAME) [join token] (things to join)
+## Joins all of the things to join with join token. If -vVAR_NAME is
+## specificed, writes it out to that var
 string.join()
 {
   if (( $# < 2 )); then
