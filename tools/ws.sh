@@ -22,22 +22,21 @@
 # Finish working in a workspace:
 # 1) Close the shell. There's no "exiting"
 
+# Workspace Name
+export workspace
+
 # Configuration
 export ws_root="${shtools_root}/workspaces"
-export ws_template="${ws_root}/workspace.sh.skel"
-export ws_inactive="<!NO_WORKSPACE!>"
-export ws_name="$ws_inactive"
-export ws_home="$ws_inactive"
+export ws_home
 export ws_funcs=()
-export ws_file=$ws_inactive
+export ws_file
 
 ## ws.info
 ## Dumps information about the workspace state
 ws.info()
 {
+  echo "workspace: $workspace"
   echo "ws_root: $ws_root"
-  echo "ws_template: $ws_template"
-  echo "ws_name: $ws_name"
   echo "ws_home: $ws_home"
   echo "ws_funcs: (${ws_funcs[@]})"
   echo "ws_file: $ws_file"
@@ -77,7 +76,7 @@ ws.new()
     return 1
   fi
 
-  py fill name="${new_name}" home="${new_home}" < "$ws_template" > workspace.sh
+  _ws.new_workspace_sh "$new_name" > workspace.sh
 
   echo "$new_name created in $new_file."
 
@@ -98,7 +97,7 @@ ws.enter()
   local possible_file
 
   if _ws.is_active; then
-    emsg "Already in a workspace: $ws_name"
+    emsg "Already in a workspace: $workspace"
     return 1
   fi
 
@@ -115,23 +114,24 @@ ws.enter()
   if ! {
     cd "$ws_home" &&
     source "$ws_file" &&
-    test "$ws_name" != "$ws_inactive";
+    test $workspace; # Tests if $workspace is not empty
   } ; then
     emsg \
       "Failed to enter workspace. Shell is probbably in a bad state" \
-      "and should be closed. Note that workspace files must set \$ws_name." \
+      "and should be closed. Note that workspace files must set \$workspace." \
       "Additional info:"
     ws.info >&2
-    dmsg "Clearing ws_name & ws_file"
-    ws_name=$ws_inactive
-    ws_file=$ws_inactive
+    dmsg "Clearing workspace & ws_file"
+    unset workspace
+    unset ws_file
+    unset ws_home
     return 1
   fi
 
   # Sourcing the file & running init seems to have gone OK.
   # Generate the list of magic functions
   ws_funcs=($(
-    for funcname in $(declare -F | cut -c12- | grep "^${ws_name}."); do
+    for funcname in $(declare -F | cut -c12- | grep "^${workspace}."); do
       echo "${funcname#*.}"
     done))
 
@@ -139,11 +139,11 @@ ws.enter()
   alias ,=_ws.active
   complete -F _ws.tab_comp_active ,
 
-  dmsg "ws_file=$ws_file, ws_name=$ws_name, ws_funcs=(${ws_funcs[@]})"
+  dmsg "ws_file=$ws_file, workspace=$workspace, ws_funcs=(${ws_funcs[@]})"
 
   ,,()
   {
-    ws_name="$ws_inactive"
+    unset workspace
     if ws.enter "$ws_file"; then
       echo "Re-sourced ${ws_file}"
     else
@@ -162,7 +162,7 @@ ws.add()
     return 1
   fi
 
-  local linkname="${ws_root}/${ws_name}.ws"
+  local linkname="${ws_root}/${workspace}.ws"
 
   dmsg "$ws_file -> $linkname"
   ln -s "$ws_file" "$linkname"
@@ -171,7 +171,7 @@ ws.add()
 _ws.active()
 {
   local cmd="$1"
-  local norm_cmd="${ws_name}.${cmd}"
+  local norm_cmd="${workspace}.${cmd}"
 
   if [[ -z $cmd ]]; then
     cd "$ws_home"
@@ -202,13 +202,13 @@ _ws.inactive()
 
 _ws.is_active()
 {
-  [[ "$ws_name" != "$ws_inactive" ]]
+  test "$workspace"
 }
 
 _ws.ps1()
 {
   if _ws.is_active; then
-    ps1.add-part proj magenta "${ws_name}"
+    ps1.add-part proj magenta "${workspace}"
   fi
 }
 
@@ -236,7 +236,7 @@ _ws.tab_comp_active()
   cur=${COMP_WORDS[COMP_CWORD]}
 
   COMPREPLY=()
-  for cg in $(compgen -c -- "${ws_name}.${cur}"); do
+  for cg in $(compgen -c -- "${workspace}.${cur}"); do
     COMPREPLY+=("${cg#*.}")
   done
 }
@@ -266,6 +266,30 @@ _ws.resolve_file()
   done
 
   return 1
+}
+
+_ws.new_workspace_sh()
+{
+  local name="$1"
+  cat <<EOF
+# workspace.sh // Common vars & operations
+
+# This is designed to work with shtools^, but can be used without it by
+# sourcing directly. Commands prefixed with '$name.' are meant to be
+# run from the dir contaning this file.
+# ^github.com/nepthar/shtools
+
+# Name (required)
+workspace="$name"
+
+# Configuration
+# my_variable=...
+
+# Commands
+# $name.run-test () {
+#   ... run the tests ...
+# }
+EOF
 }
 
 alias ,=_ws.inactive

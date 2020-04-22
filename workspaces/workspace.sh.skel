@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-
-ws_name="{{name}}"
-
-# This file is designed to work with Nepthar's shell tools, but it
-# can be used without them. See https://github.com/nepthar/shtools
-
-# Common workspace commands:
-# {{name}}.run-test () { ... run the tests ... }
