@@ -181,7 +181,7 @@ _ws.active()
   shift 1
 
   if isfunc $norm_cmd; then
-    $norm_cmd "$@"
+    ( cd "$ws_home"; $norm_cmd "$@"; )
   else
     echo "$cmd not found"
     return 1
