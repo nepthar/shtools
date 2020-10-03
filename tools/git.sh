@@ -8,60 +8,43 @@ _git.setup()
   complete -o bashdefault -o default -o nospace -F _complete_g g
 }
 
-# The all knowing shortcut
-g()
-{
-  local gcmd="$1"
-  local rc=1
+# Shortcuts
+alias g=git
+alias gs=git.status
+alias gp=git.push-current
+alias gc=git.commit
+alias gca=git.commit-all
 
-  # Set up alerts, but only for non-interactive pulling/fetching
-  case $gcmd in
-    pull|fetch|status|co|checkout|stash|update)
-      alert git "$@"
-      rc=$?
-      ;;
-    *)
-      git "$@"
-      rc=$?
-      ;;
-  esac
-  return $rc
+git.status()
+{
+  git status "$@"
 }
 
-g.s() {
-  g status "$@"
+git.push-current()
+{
+  git push "$@" origin $branch
 }
 
 # g.c: Commit staged changes w/branch prefix
-g.c()
+git.commit()
 {
   if git.is-clean; then
     echo "g.c: Nothing to commit"
     return 1
   fi
   local branch="$(git.current-branch)"
-  g commit -m "$branch: $@"
+  git commit -m "$branch: $@"
 }
 
 # g.ca: Stage & commit all changes w/branch prefix
-g.ca()
+git.commit-all()
 {
   if git.is-clean; then
     echo "g.ca: Nothing to commit"
     return 1
   fi
-  g add -u
-  g.c "$@"
-}
-
-# g.p: Push/overwrite current branch on origin
-g.p() {
-  if git.is-dirty; then
-    echo "g.p: Repo is dirty."
-  fi
-  local branch="$(git.current-branch)"
-  g push origin ":$branch"
-  g push origin "$branch"
+  git add -u
+  git.commit "$@"
 }
 
 g.rc() {
@@ -166,10 +149,12 @@ _git.ps1()
 {
   unset git_branch
   unset git_root
+  unset branch
 
   if git.current-branch -vgit_branch; then
     export git_branch
     export git_root
+    export branch="$git_branch"
 
     local fmt="%s"
     local git_ps1="$git_branch"
@@ -215,5 +200,4 @@ _complete_g()
       return 124
       ;;
   esac
-
 }
